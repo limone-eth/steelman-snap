@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel --prod",
+    "create-wallet": "node scripts/create-wallet.js",
     "setup": "node scripts/setup.js",
     "register": "node scripts/register-fid.js",
     "add-signer": "node scripts/add-signer.js",

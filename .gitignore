@@ -11,6 +11,7 @@ node_modules/
 
 # Local agent credentials (private keys — never commit)
 credentials.json
+.wallet-pending.json
 
 # OS files
 .DS_Store

@@ -7,6 +7,7 @@ const { registerFid } = require('./register-fid');
 const { addSigner } = require('./add-signer');
 const { swapEthToUsdc } = require('./swap-to-usdc');
 const { saveCredentials, getCredentialsPath } = require('./credentials');
+const { loadPendingWallet, deletePendingWallet, PENDING_PATH } = require('./create-wallet');
 
 /**
  * One-shot agent bootstrap. Assumes the custody wallet is already pre-funded
@@ -79,7 +80,7 @@ async function setup(privateKey, options = {}) {
     console.log('\nBase USDC balance already sufficient — skipping swap.');
   }
 
-  // ---- Step 5: save credentials ----
+  // ---- Step 5: save credentials + clean up pending wallet ----
   console.log('\n--- Saving credentials ---');
   const credentialsPath = saveCredentials({
     fid: fid.toString(),
@@ -88,6 +89,9 @@ async function setup(privateKey, options = {}) {
     signerPublicKey,
     signerPrivateKey
   });
+
+  // The key now lives in credentials.json under the FID — drop the pending file.
+  deletePendingWallet();
 
   // ---- Step 6: print .env lines ----
   console.log('\n=== Setup Complete ===');
@@ -110,10 +114,23 @@ async function setup(privateKey, options = {}) {
 
 // CLI usage
 if (require.main === module) {
-  const privateKey = process.env.PRIVATE_KEY || process.argv[2];
+  // Priority: env > argv > .wallet-pending.json (from `npm run create-wallet`)
+  let privateKey = process.env.PRIVATE_KEY || process.argv[2];
+  let source = privateKey ? (process.env.PRIVATE_KEY ? 'PRIVATE_KEY env' : 'argv') : null;
 
   if (!privateKey) {
-    console.log('Usage: PRIVATE_KEY=0x... node scripts/setup.js\n');
+    const pending = loadPendingWallet();
+    if (pending?.privateKey) {
+      privateKey = pending.privateKey;
+      source = PENDING_PATH;
+    }
+  }
+
+  if (!privateKey) {
+    console.log('No wallet found.\n');
+    console.log('Either:');
+    console.log('  - Run `npm run create-wallet` first to generate one locally, or');
+    console.log('  - Pass your own: PRIVATE_KEY=0x... npm run setup\n');
     console.log('This will, in order:');
     console.log('  1. Check your wallet balance on Optimism + Base');
     console.log('  2. Register a new FID on Optimism (~0.001 ETH)');
@@ -124,6 +141,8 @@ if (require.main === module) {
     console.log('Credentials path:', getCredentialsPath());
     process.exit(1);
   }
+
+  console.log(`Using wallet from ${source}\n`);
 
   setup(privateKey)
     .then(() => process.exit(0))

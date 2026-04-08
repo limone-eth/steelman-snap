@@ -66,6 +66,7 @@ lib/
   openrouter.js           OpenAI-compatible client pointed at OpenRouter
   config.js               Farcaster contracts + Neynar / USDC constants
 scripts/                  One-time agent bootstrap (not used at runtime)
+  create-wallet.js        Generate a fresh EVM wallet locally
   setup.js                Orchestrator: register FID + signer + swap + save creds
   register-fid.js         Register a new FID on Optimism
   add-signer.js           Generate Ed25519 signer + add via KeyGateway
@@ -87,29 +88,42 @@ You'll need:
 
 ### Bootstrap the agent identity
 
-The `scripts/` directory contains everything needed to create a Farcaster account programmatically — no Neynar dev portal, no Warpcast QR code, no human in the loop. The flow is lifted from [rishavmukherji/farcaster-agent](https://github.com/rishavmukherji/farcaster-agent) and stripped to the essentials (no bridging — bring your own pre-funded wallet).
+The `scripts/` directory contains everything needed to create a Farcaster account programmatically — no Neynar dev portal, no Warpcast QR code, no human in the loop. This is the same flow Neynar documents in [Autonomous Farcaster agent](https://docs.neynar.com/docs/autonomous-farcaster-agent), lifted from [rishavmukherji/farcaster-agent](https://github.com/rishavmukherji/farcaster-agent) and stripped to the essentials (no auto-bridging — bring your own pre-funded wallet).
 
 ```bash
 git clone https://github.com/limone-eth/steelman-snap
 cd steelman-snap
 npm install
 
-# Pre-fund a fresh EVM wallet with:
-#   - ~0.0015 ETH on Optimism (FID registration + signer gas)
-#   - ~0.0002 ETH on Base (gets swapped to USDC for x402)
+# 1. Generate a fresh EVM wallet locally
+npm run create-wallet
+#    → prints an address, saves the key to .wallet-pending.json (gitignored)
 
-PRIVATE_KEY=0x... npm run setup
+# 2. Fund that address with ~$1 of ETH:
+#       - Optimism: ~0.0015 ETH (FID registration + signer gas)
+#       - Base:     ~0.0002 ETH (gets swapped to USDC for x402)
+
+# 3. Run the rest of the bootstrap
+npm run setup
+#    → reads .wallet-pending.json, registers FID, adds signer, swaps to USDC,
+#      saves credentials.json, prints the env vars you need
 ```
 
 `npm run setup` will:
 
 1. Verify the wallet has enough ETH on Optimism + Base
-2. Register a new FID via the IdGateway contract
-3. Generate an Ed25519 signer keypair locally and add it via KeyGateway with a self-signed EIP-712 key request
-4. Swap a slice of Base ETH → USDC via Uniswap V3 (for x402 micropayments to Neynar)
-5. Write `credentials.json` (gitignored) and print the env-var lines you need to paste into `.env`
+2. Register a new FID via the `IdGateway` contract on Optimism
+3. Generate an Ed25519 signer keypair locally and add it via `KeyGateway` with a self-signed EIP-712 key request
+4. Swap a slice of Base ETH → USDC via Uniswap V3 (for x402 micropayments to Neynar's hub)
+5. Write `credentials.json` (gitignored), delete `.wallet-pending.json`, and print the env-var lines you need to paste into `.env`
 
 Total cost: roughly **$0.50–$1.00** depending on gas. After it finishes you'll have an agent that can post casts entirely under your own keys — no managed services involved.
+
+If you'd rather provide your own pre-existing wallet, skip `create-wallet` and pass `PRIVATE_KEY` directly:
+
+```bash
+PRIVATE_KEY=0x... npm run setup
+```
 
 Individual steps are also exposed as scripts in case you want to run them à la carte:
 
