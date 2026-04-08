@@ -42,7 +42,7 @@ function createWallet({ force = false } = {}) {
   console.log('(gitignored — never commit this file)\n');
   console.log('Next steps:');
   console.log('  1. Fund this address with ~$1 of ETH:');
-  console.log(`       - Optimism: ~0.0015 ETH  (FID registration + signer gas)`);
+  console.log(`       - Optimism: ~0.0005 ETH  (FID registration + signer gas)`);
   console.log(`       - Base:     ~0.0002 ETH  (gets swapped to USDC for x402)`);
   console.log('  2. Run: npm run setup');
 

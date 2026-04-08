@@ -47,7 +47,7 @@ async function setup(privateKey, options = {}) {
   console.log('  Base ETH:    ', formatEther(baseEthBalance));
   console.log('  Base USDC:   ', formatUnits(baseUsdcBalance, 6));
 
-  const minOpEth = parseEther('0.0015');
+  const minOpEth = parseEther('0.0005');
   if (opBalance < minOpEth) {
     throw new Error(
       `Need at least ${formatEther(minOpEth)} ETH on Optimism for FID registration + signer. ` +
