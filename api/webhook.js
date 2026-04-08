@@ -12,6 +12,45 @@ const CUSTODY_PRIVATE_KEY = process.env.CUSTODY_PRIVATE_KEY;
 const SIGNER_PRIVATE_KEY = process.env.SIGNER_PRIVATE_KEY;
 const AGENT_FID = parseInt(process.env.AGENT_FID || '0', 10);
 const AGENT_USERNAME = (process.env.AGENT_USERNAME || 'steelmanbot').replace(/^@/, '').toLowerCase();
+const NEYNAR_WEBHOOK_SECRET = process.env.NEYNAR_WEBHOOK_SECRET;
+
+/**
+ * Vercel auto-parses JSON bodies, but Neynar's signature is HMAC-SHA512 over
+ * the raw bytes — re-stringifying parsed JSON would change whitespace / key
+ * order and break verification. Disabling the body parser lets us read the
+ * stream ourselves.
+ */
+module.exports.config = {
+  api: { bodyParser: false }
+};
+
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Verify the X-Neynar-Signature header against an HMAC-SHA512 of the raw body.
+ * Returns true if valid, false otherwise. Constant-time comparison.
+ *
+ * Docs: https://docs.neynar.com/docs/how-to-verify-the-incoming-webhooks-using-signatures
+ */
+function verifyNeynarSignature(rawBody, signatureHeader, secret) {
+  if (!signatureHeader || !secret) return false;
+
+  const expected = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
+
+  if (expected.length !== signatureHeader.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Decide whether this incoming cast should trigger a steelman.
@@ -48,11 +87,12 @@ function newSteelmanId() {
  * Neynar webhook entry point.
  *
  * Flow:
- *   1. Filter to cast.created mentioning us
- *   2. Resolve the target cast (parent if reply, else the trigger itself)
- *   3. Generate steelman/weakman/agree via OpenRouter
- *   4. Persist in Upstash under a short id
- *   5. Reply to the trigger with the snap URL as an embed
+ *   1. Verify HMAC signature against NEYNAR_WEBHOOK_SECRET
+ *   2. Filter to cast.created mentioning us
+ *   3. Resolve the target cast (parent if reply, else the trigger itself)
+ *   4. Generate steelman/weakman/agree via OpenRouter
+ *   5. Persist in Upstash under a short id
+ *   6. Reply to the trigger with the snap URL as an embed
  */
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -64,7 +104,31 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: 'AGENT_FID is not set' });
     }
 
-    const event = req.body;
+    // --- Read raw body (Vercel body parser disabled above) ---
+    const rawBody = await readRawBody(req);
+
+    // --- Verify signature ---
+    if (NEYNAR_WEBHOOK_SECRET) {
+      const sig = req.headers['x-neynar-signature'];
+      if (!verifyNeynarSignature(rawBody, sig, NEYNAR_WEBHOOK_SECRET)) {
+        console.warn('Rejected webhook with invalid signature');
+        return res.status(401).json({ error: 'invalid signature' });
+      }
+    } else {
+      console.warn(
+        'NEYNAR_WEBHOOK_SECRET is not set — skipping signature verification. ' +
+        'Set it in production to prevent unauthorized webhook calls.'
+      );
+    }
+
+    // --- Parse body ---
+    let event;
+    try {
+      event = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).json({ error: 'invalid JSON' });
+    }
+
     if (!event?.type || !event?.data) {
       return res.status(400).json({ error: 'Invalid event structure' });
     }
