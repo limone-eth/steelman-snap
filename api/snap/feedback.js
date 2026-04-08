@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { loadSteelman, addRating, getRatingStats } = require('../../lib/storage');
 const { buildSnap } = require('../../lib/snap-builder');
+const { sendSnap, sendSnapError, handlePreflight } = require('../../lib/snap-response');
 
 /**
  * POST /api/snap/feedback?id=<id>&view=<view>
@@ -13,17 +14,20 @@ const { buildSnap } = require('../../lib/snap-builder');
  * Returns a fresh snap JSON tree representing the new state.
  */
 module.exports = async (req, res) => {
+  if (handlePreflight(req, res)) return;
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return sendSnapError(res, 405, 'Method not allowed');
   }
 
   try {
     const id = req.query?.id;
     let view = req.query?.view || 'strong';
-    if (!id) return res.status(400).json({ error: 'missing id' });
+    if (!id) return sendSnapError(res, 400, 'missing id');
 
     const steelman = await loadSteelman(id);
-    if (!steelman) return res.status(404).json({ error: 'steelman not found' });
+    if (!steelman) return sendSnapError(res, 404, 'steelman not found');
 
     const inputs = req.body?.inputs || {};
     let stats;
@@ -37,10 +41,9 @@ module.exports = async (req, res) => {
     }
 
     const snap = buildSnap(steelman, view, stats);
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json(snap);
+    return sendSnap(res, snap);
   } catch (err) {
     console.error('snap feedback error:', err);
-    return res.status(500).json({ error: err.message });
+    return sendSnapError(res, 500, err.message);
   }
 };
