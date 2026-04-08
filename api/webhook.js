@@ -95,6 +95,13 @@ function newSteelmanId() {
  *   6. Reply to the trigger with the snap URL as an embed
  */
 module.exports = async (req, res) => {
+  // Health check / Neynar URL verification — respond 200 to any GET so the
+  // dashboard "test webhook" / URL preflight passes without trying to forge
+  // a fake event.
+  if (req.method === 'GET') {
+    return res.status(200).json({ ok: true, service: 'steelman-snap webhook' });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
