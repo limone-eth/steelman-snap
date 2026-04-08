@@ -1,0 +1,17 @@
+{
+  "name": "steelman-snap",
+  "version": "0.1.0",
+  "description": "Farcaster bot that replies with a steelman/weakman/common-ground Snap on any cast you tag it on",
+  "main": "api/webhook.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@farcaster/hub-nodejs": "^0.15.9",
+    "@upstash/redis": "^1.34.3",
+    "dotenv": "^17.4.1",
+    "ethers": "^6.16.0",
+    "openai": "^4.0.0"
+  }
+}
