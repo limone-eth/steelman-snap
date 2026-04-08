@@ -13,6 +13,7 @@ const {
 
 const { resolveCustodySigner } = require('../lib/custody');
 const { submitMessage } = require('../lib/x402');
+const { loadCredentials } = require('./credentials');
 
 /**
  * Set the agent's profile (fname, display name, bio, pfp URL).
@@ -235,9 +236,21 @@ if (require.main === module) {
   (async () => {
     const argv = process.argv.slice(2);
 
-    const fid = parseInt(process.env.AGENT_FID || '0', 10);
-    const custodyPrivateKey = process.env.CUSTODY_PRIVATE_KEY;
-    const signerPrivateKey = process.env.SIGNER_PRIVATE_KEY;
+    // Resolve identity: env vars first, then credentials.json (from `npm run setup`).
+    let fid = parseInt(process.env.AGENT_FID || '0', 10);
+    let custodyPrivateKey = process.env.CUSTODY_PRIVATE_KEY;
+    let signerPrivateKey = process.env.SIGNER_PRIVATE_KEY;
+    let identitySource = 'env';
+
+    if (!fid || !custodyPrivateKey || !signerPrivateKey) {
+      const creds = loadCredentials();
+      if (creds) {
+        fid = fid || parseInt(creds.fid, 10);
+        custodyPrivateKey = custodyPrivateKey || creds.custodyPrivateKey;
+        signerPrivateKey = signerPrivateKey || creds.signerPrivateKey;
+        identitySource = 'credentials.json';
+      }
+    }
 
     const fname = pickArg(argv, '--fname', 'AGENT_FNAME');
     const displayName = pickArg(argv, '--display', 'AGENT_DISPLAY_NAME');
@@ -245,12 +258,15 @@ if (require.main === module) {
     const pfpUrl = pickArg(argv, '--pfp', 'AGENT_PFP_URL');
 
     if (!fid || !custodyPrivateKey || !signerPrivateKey) {
-      console.log('Missing AGENT_FID / CUSTODY_PRIVATE_KEY / SIGNER_PRIVATE_KEY in .env\n');
+      console.log('Missing AGENT_FID / CUSTODY_PRIVATE_KEY / SIGNER_PRIVATE_KEY.\n');
+      console.log('Set them in .env, or run `npm run setup` first to create credentials.json.\n');
       console.log('Usage:');
       console.log('  npm run profile -- --fname myname --display "My Bot" --bio "Steelmans contentious casts" --pfp https://...');
       console.log('\nOr set AGENT_FNAME / AGENT_DISPLAY_NAME / AGENT_BIO / AGENT_PFP_URL in .env');
       process.exit(1);
     }
+
+    console.log(`Using identity from ${identitySource} (FID ${fid})`);
 
     if (!fname && !displayName && !bio && !pfpUrl) {
       console.log('Nothing to update. Pass at least one of:');
