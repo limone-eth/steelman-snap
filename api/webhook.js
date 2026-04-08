@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { postCast } = require('../lib/farcaster');
 const { getCastByHash } = require('../lib/neynar');
 const { generateSteelman } = require('../lib/steelman');
-const { saveSteelman } = require('../lib/storage');
+const { saveSteelman, claimTriggerCast, releaseTriggerCast } = require('../lib/storage');
 const { snapUrl } = require('../lib/snap-builder');
 
 const CUSTODY_PRIVATE_KEY = process.env.CUSTODY_PRIVATE_KEY;
@@ -153,53 +153,75 @@ module.exports = async (req, res) => {
       return res.status(200).json({ message: 'not a mention' });
     }
 
-    const target = await resolveTargetCast(triggerCast);
+    // Dedupe: claim this trigger cast atomically so Neynar retries (or any
+    // duplicate delivery) can't cause us to reply twice. If another
+    // invocation already claimed it, ack 200 and bail out.
+    const claimed = await claimTriggerCast(triggerCast.hash);
+    if (!claimed) {
+      console.log(`Skipping duplicate trigger ${triggerCast.hash}`);
+      return res.status(200).json({ message: 'duplicate trigger', hash: triggerCast.hash });
+    }
+
+    let target;
+    try {
+      target = await resolveTargetCast(triggerCast);
+    } catch (err) {
+      await releaseTriggerCast(triggerCast.hash);
+      throw err;
+    }
     if (!target?.text) {
+      // Nothing to do, but the claim still stands so we don't reprocess.
       return res.status(200).json({ message: 'no target text to steelman' });
     }
 
-    console.log(
-      `Steelmanning cast ${target.hash} by @${target.author?.username || 'anon'}`
-    );
+    try {
+      console.log(
+        `Steelmanning cast ${target.hash} by @${target.author?.username || 'anon'}`
+      );
 
-    const { strong, weak, agree } = await generateSteelman(
-      target.text,
-      target.author?.username
-    );
+      const { strong, weak, agree } = await generateSteelman(
+        target.text,
+        target.author?.username
+      );
 
-    const id = newSteelmanId();
-    await saveSteelman({
-      id,
-      parentHash: target.hash,
-      parentAuthor: target.author?.username || 'anon',
-      parentText: target.text,
-      strong,
-      weak,
-      agree,
-      createdAt: Date.now()
-    });
+      const id = newSteelmanId();
+      await saveSteelman({
+        id,
+        parentHash: target.hash,
+        parentAuthor: target.author?.username || 'anon',
+        parentText: target.text,
+        strong,
+        weak,
+        agree,
+        createdAt: Date.now()
+      });
 
-    const url = snapUrl(id);
-    const replyText = "here's the steelman ↓";
+      const url = snapUrl(id);
+      const replyText = "here's the steelman ↓";
 
-    const result = await postCast({
-      custodyPrivateKey: CUSTODY_PRIVATE_KEY,
-      signerPrivateKey: SIGNER_PRIVATE_KEY,
-      fid: AGENT_FID,
-      text: replyText,
-      embedUrls: [url],
-      parentHash: triggerCast.hash,
-      parentFid: triggerAuthor.fid
-    });
+      const result = await postCast({
+        custodyPrivateKey: CUSTODY_PRIVATE_KEY,
+        signerPrivateKey: SIGNER_PRIVATE_KEY,
+        fid: AGENT_FID,
+        text: replyText,
+        embedUrls: [url],
+        parentHash: triggerCast.hash,
+        parentFid: triggerAuthor.fid
+      });
 
-    console.log(`Posted steelman reply ${result.hash} → ${url}`);
+      console.log(`Posted steelman reply ${result.hash} → ${url}`);
 
-    return res.status(200).json({
-      success: true,
-      castHash: result.hash,
-      steelmanId: id,
-      snapUrl: url
-    });
+      return res.status(200).json({
+        success: true,
+        castHash: result.hash,
+        steelmanId: id,
+        snapUrl: url
+      });
+    } catch (err) {
+      // Release the claim so Neynar's retry has a chance to succeed.
+      await releaseTriggerCast(triggerCast.hash).catch(() => {});
+      throw err;
+    }
   } catch (err) {
     console.error('webhook error:', err);
     return res.status(500).json({ error: 'Internal server error', message: err.message });
