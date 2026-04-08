@@ -9,6 +9,9 @@ node_modules/
 # Vercel
 .vercel
 
+# Local agent credentials (private keys — never commit)
+credentials.json
+
 # OS files
 .DS_Store
 

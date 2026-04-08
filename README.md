@@ -64,7 +64,13 @@ lib/
   x402.js                 x402 payment + Neynar hub submitMessage
   custody.js              ethers Wallet from CUSTODY_PRIVATE_KEY
   openrouter.js           OpenAI-compatible client pointed at OpenRouter
-  config.js               Neynar / USDC constants
+  config.js               Farcaster contracts + Neynar / USDC constants
+scripts/                  One-time agent bootstrap (not used at runtime)
+  setup.js                Orchestrator: register FID + signer + swap + save creds
+  register-fid.js         Register a new FID on Optimism
+  add-signer.js           Generate Ed25519 signer + add via KeyGateway
+  swap-to-usdc.js         ETH → USDC on Base via Uniswap V3 (for x402)
+  credentials.js          Local credentials.json store
 package.json
 vercel.json
 .env.example
@@ -74,11 +80,45 @@ vercel.json
 
 You'll need:
 
-- A **Farcaster account** for the bot, with a registered FID, a custody EVM key, and an Ed25519 signer key. (If you don't have these yet, the [farcaster-agent](https://github.com/limone-eth/farcaster-agent) repo this project descends from has scripts to register one.)
+- An **EVM wallet** with ~$1 of ETH on Optimism + ~$0.50 of ETH on Base — used by the setup scripts to register the bot's FID, add a signer, and pay Neynar's hub via x402 micropayments at runtime.
 - An **OpenRouter API key** — https://openrouter.ai/keys
 - An **Upstash Redis** database (free tier is fine) — https://upstash.com/
-- Some **USDC on Base** in the custody wallet — Neynar's hub charges via x402 micropayments per cast and per API read (~0.01 USDC each).
 - A **Neynar webhook** filtered to mentions of your agent FID, pointed at your deployed `/api/webhook`.
+
+### Bootstrap the agent identity
+
+The `scripts/` directory contains everything needed to create a Farcaster account programmatically — no Neynar dev portal, no Warpcast QR code, no human in the loop. The flow is lifted from [rishavmukherji/farcaster-agent](https://github.com/rishavmukherji/farcaster-agent) and stripped to the essentials (no bridging — bring your own pre-funded wallet).
+
+```bash
+git clone https://github.com/limone-eth/steelman-snap
+cd steelman-snap
+npm install
+
+# Pre-fund a fresh EVM wallet with:
+#   - ~0.0015 ETH on Optimism (FID registration + signer gas)
+#   - ~0.0002 ETH on Base (gets swapped to USDC for x402)
+
+PRIVATE_KEY=0x... npm run setup
+```
+
+`npm run setup` will:
+
+1. Verify the wallet has enough ETH on Optimism + Base
+2. Register a new FID via the IdGateway contract
+3. Generate an Ed25519 signer keypair locally and add it via KeyGateway with a self-signed EIP-712 key request
+4. Swap a slice of Base ETH → USDC via Uniswap V3 (for x402 micropayments to Neynar)
+5. Write `credentials.json` (gitignored) and print the env-var lines you need to paste into `.env`
+
+Total cost: roughly **$0.50–$1.00** depending on gas. After it finishes you'll have an agent that can post casts entirely under your own keys — no managed services involved.
+
+Individual steps are also exposed as scripts in case you want to run them à la carte:
+
+```bash
+PRIVATE_KEY=0x... npm run register     # just register the FID
+PRIVATE_KEY=0x... npm run add-signer   # just add a new signer to an existing FID
+PRIVATE_KEY=0x... npm run swap         # just swap ETH → USDC on Base
+npm run credentials list               # show stored agents in credentials.json
+```
 
 ### Local
 

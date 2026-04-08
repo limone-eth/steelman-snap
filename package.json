@@ -5,7 +5,12 @@
   "main": "api/webhook.js",
   "scripts": {
     "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "setup": "node scripts/setup.js",
+    "register": "node scripts/register-fid.js",
+    "add-signer": "node scripts/add-signer.js",
+    "swap": "node scripts/swap-to-usdc.js",
+    "credentials": "node scripts/credentials.js"
   },
   "dependencies": {
     "@farcaster/hub-nodejs": "^0.15.9",
