@@ -71,6 +71,7 @@ scripts/                  One-time agent bootstrap (not used at runtime)
   register-fid.js         Register a new FID on Optimism
   add-signer.js           Generate Ed25519 signer + add via KeyGateway
   swap-to-usdc.js         ETH → USDC on Base via Uniswap V3 (for x402)
+  set-profile.js          Register fname + set display name / bio / pfp
   credentials.js          Local credentials.json store
 package.json
 vercel.json
@@ -100,7 +101,7 @@ npm run create-wallet
 #    → prints an address, saves the key to .wallet-pending.json (gitignored)
 
 # 2. Fund that address with ~$1 of ETH:
-#       - Optimism: ~0.0015 ETH (FID registration + signer gas)
+#       - Optimism: ~0.0005 ETH (FID registration + signer gas)
 #       - Base:     ~0.0002 ETH (gets swapped to USDC for x402)
 
 # 3. Run the rest of the bootstrap
@@ -133,6 +134,27 @@ PRIVATE_KEY=0x... npm run add-signer   # just add a new signer to an existing FI
 PRIVATE_KEY=0x... npm run swap         # just swap ETH → USDC on Base
 npm run credentials list               # show stored agents in credentials.json
 ```
+
+### Set the agent's profile
+
+After `setup` finishes, you'll have a FID but no username, display name, bio, or pfp. Run `npm run profile` to set them. It uses the same credentials and the same x402 hub plumbing as the casting flow — no Neynar API key needed.
+
+```bash
+# With CLI flags:
+npm run profile -- \
+  --fname steelmanbot \
+  --display "Steelman Bot" \
+  --bio "Tag me on a contentious cast and I'll steelman it." \
+  --pfp https://example.com/pfp.png
+
+# Or set AGENT_FNAME / AGENT_DISPLAY_NAME / AGENT_BIO / AGENT_PFP_URL in .env
+# and just run:
+npm run profile
+```
+
+Each field is independent — only the ones you provide get updated. The fname registration goes through `fnames.farcaster.xyz` (Warpcast's free fname server) and waits ~30s for hub sync before announcing the username.
+
+After this, set `AGENT_USERNAME=<your fname>` in `.env` so the webhook can detect `@`-mentions of the bot.
 
 ### Local
 

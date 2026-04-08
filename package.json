@@ -11,6 +11,7 @@
     "register": "node scripts/register-fid.js",
     "add-signer": "node scripts/add-signer.js",
     "swap": "node scripts/swap-to-usdc.js",
+    "profile": "node scripts/set-profile.js",
     "credentials": "node scripts/credentials.js"
   },
   "dependencies": {
